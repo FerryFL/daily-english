@@ -1,69 +1,351 @@
-import Image from "next/image";
+import { Suspense } from "react";
+import Link from "next/link";
+import { desc, eq, sql } from "drizzle-orm";
+import { CheckCircle2, Headphones, Play, Sparkles, Target, Video as VideoIcon } from "lucide-react";
+import { getDb, isDbConfigured } from "@/db";
+import { chunkAttempts, progress, videos } from "@/db/schema";
+import { getOptionalUser } from "@/lib/supabase/server";
+import { getActiveDemoVideo } from "@/lib/video-service";
+import { thumbnailUrl } from "@/lib/youtube";
+import { Navbar } from "@/components/navbar";
+import { VideoUrlForm } from "@/components/video-url-form";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
 
-export default function Home() {
+function formatDuration(sec: number | null): string | null {
+  if (!sec || sec <= 0) return null;
+  const mins = Math.floor(sec / 60);
+  const rem = sec % 60;
+  return `${mins}:${rem.toString().padStart(2, "0")}`;
+}
+
+function DashboardSkeleton() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+    <div className="mx-auto w-full max-w-5xl space-y-10 px-4 py-10 sm:px-6">
+      <div className="flex flex-col items-center space-y-4">
+        <Skeleton className="h-9 w-64" />
+        <Skeleton className="h-12 w-full max-w-2xl rounded-xl" />
+      </div>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Skeleton className="h-24 rounded-2xl" />
+        <Skeleton className="h-24 rounded-2xl" />
+        <Skeleton className="h-24 rounded-2xl" />
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <Skeleton className="h-64 rounded-2xl" />
+        <Skeleton className="h-64 rounded-2xl" />
+        <Skeleton className="h-64 rounded-2xl" />
+      </div>
+    </div>
+  );
+}
+
+async function DashboardContent() {
+  const user = await getOptionalUser();
+  const displayName = user
+    ? (user.user_metadata?.full_name as string | undefined)?.trim() ||
+      user.email?.split("@")[0] ||
+      "there"
+    : null;
+
+  let recent: {
+    videoId: string;
+    title: string;
+    channel: string | null;
+    durationSec: number | null;
+    isAutoGenerated: boolean;
+    currentChunk: number;
+    totalChunks: number;
+    completed: boolean;
+  }[] = [];
+
+  let stats = { videosCount: 0, wordsCorrect: 0, accuracy: 0 };
+  const demoVideo = user ? null : await getActiveDemoVideo();
+
+  if (user && isDbConfigured()) {
+    const db = getDb();
+    const [recentRows, [agg]] = await Promise.all([
+      db
+        .select({
+          videoId: videos.id,
+          title: videos.title,
+          channel: videos.channel,
+          durationSec: videos.durationSec,
+          isAutoGenerated: videos.isAutoGenerated,
+          currentChunk: progress.currentChunk,
+          totalChunks: progress.totalChunks,
+          completed: progress.completed,
+        })
+        .from(progress)
+        .innerJoin(videos, eq(progress.videoId, videos.id))
+        .where(eq(progress.userId, user.id))
+        .orderBy(desc(progress.updatedAt))
+        .limit(12),
+      db
+        .select({
+          blanksTotal: sql<number>`coalesce(sum(${chunkAttempts.blanksTotal}), 0)::int`,
+          blanksCorrect: sql<number>`coalesce(sum(${chunkAttempts.blanksCorrect}), 0)::int`,
+        })
+        .from(chunkAttempts)
+        .where(eq(chunkAttempts.userId, user.id)),
+    ]);
+
+    recent = recentRows;
+    const total = agg?.blanksTotal ?? 0;
+    const correct = agg?.blanksCorrect ?? 0;
+    stats = {
+      videosCount: recentRows.length,
+      wordsCorrect: correct,
+      accuracy: total > 0 ? Math.round((correct / total) * 100) : 0,
+    };
+  }
+
+  return (
+    <div className="flex min-h-svh flex-col">
+      <Navbar
+        user={
+          user
+            ? {
+                email: user.email,
+                name: user.user_metadata?.full_name as string | undefined,
+              }
+            : null
+        }
+      />
+
+      <main className="mx-auto w-full max-w-5xl flex-1 space-y-10 px-4 py-10 sm:px-6">
+        {/* Hero */}
+        <section className="flex flex-col items-center space-y-5 text-center">
+          <div className="space-y-2">
+            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+              {displayName ? `Welcome back, ${displayName}` : "Welcome!"}
+            </h1>
+            <p className="text-muted-foreground">
+              What do you want to listen to today? Paste any YouTube video to start.
+            </p>
+          </div>
+          <VideoUrlForm isAuthenticated={Boolean(user)} />
+        </section>
+
+        {!user && demoVideo ? (
+          /* Guest Demo Section: 1 card with Practice button, no progress tracking */
+          <section className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold tracking-tight">Try a demo</h2>
+              <span className="text-xs text-muted-foreground">No sign-in required</span>
+            </div>
+
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              <Card className="group overflow-hidden rounded-2xl transition-shadow hover:shadow-md">
+                <div className="relative aspect-video w-full overflow-hidden bg-muted">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={thumbnailUrl(demoVideo.id)}
+                    alt={demoVideo.title}
+                    className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                  />
+                  {formatDuration(demoVideo.durationSec) && (
+                    <span className="absolute right-2 bottom-2 rounded-md bg-black/80 px-1.5 py-0.5 font-mono text-xs text-white">
+                      {formatDuration(demoVideo.durationSec)}
+                    </span>
+                  )}
+                  <Badge className="absolute top-2 left-2 bg-[#10B981] text-[11px] font-semibold text-zinc-950">
+                    Demo
+                  </Badge>
+                </div>
+
+                <CardContent className="space-y-4 p-4">
+                  <div className="space-y-1">
+                    <h3 className="line-clamp-2 text-sm font-semibold leading-snug">
+                      {demoVideo.title}
+                    </h3>
+                    {demoVideo.channel && (
+                      <p className="truncate text-xs text-muted-foreground">{demoVideo.channel}</p>
+                    )}
+                  </div>
+
+                  <Button
+                    asChild
+                    className="h-11 w-full rounded-md bg-[#10B981] py-2.5 text-sm font-semibold text-zinc-950 hover:bg-[#34D399]"
+                  >
+                    <Link href={`/practice/${demoVideo.id}`}>
+                      <Play className="size-3.5" />
+                      Practice
+                    </Link>
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          </section>
+        ) : (
+          <>
+            {/* Stats */}
+            <section className="grid gap-4 sm:grid-cols-3">
+              <Card className="rounded-2xl">
+                <CardContent className="flex items-center gap-4 p-5">
+                  <div className="flex size-10 items-center justify-center rounded-xl bg-[#10B981]/15 text-[#10B981] dark:text-[#34D399]">
+                    <VideoIcon className="size-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground">Videos practiced</p>
+                    <p className="text-2xl font-bold">{stats.videosCount}</p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="rounded-2xl">
+                <CardContent className="flex items-center gap-4 p-5">
+                  <div className="flex size-10 items-center justify-center rounded-xl bg-[#10B981]/15 text-[#10B981] dark:text-[#34D399]">
+                    <Sparkles className="size-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground">
+                      Words heard correctly
+                    </p>
+                    <p className="text-2xl font-bold text-[#10B981] dark:text-[#34D399]">
+                      {stats.wordsCorrect}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="rounded-2xl">
+                <CardContent className="flex items-center gap-4 p-5">
+                  <div className="flex size-10 items-center justify-center rounded-xl bg-[#10B981]/15 text-[#10B981] dark:text-[#34D399]">
+                    <Target className="size-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground">Overall accuracy</p>
+                    <p className="text-2xl font-bold">{stats.accuracy}%</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </section>
+
+            {/* Continue practicing */}
+            <section className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold tracking-tight">Continue practicing</h2>
+                {recent.length > 0 && (
+                  <span className="text-xs text-muted-foreground">{recent.length} recent</span>
+                )}
+              </div>
+
+              {recent.length === 0 ? (
+                <Card className="rounded-2xl border-dashed">
+                  <CardContent className="flex flex-col items-center justify-center gap-3 py-14 text-center">
+                    <div className="flex size-12 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
+                      <Headphones className="size-6" />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="font-medium">No videos practiced yet</p>
+                      <p className="max-w-sm text-sm text-muted-foreground">
+                        Paste a YouTube link above (for example, a TED Talk or English podcast) to
+                        begin your first listening session.
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                  {recent.map((item) => {
+                    const done = item.completed ? item.totalChunks : item.currentChunk;
+                    const pct =
+                      item.totalChunks > 0
+                        ? Math.min(100, Math.round((done / item.totalChunks) * 100))
+                        : 0;
+                    const dur = formatDuration(item.durationSec);
+
+                    return (
+                      <Card
+                        key={item.videoId}
+                        className="group overflow-hidden rounded-2xl transition-shadow hover:shadow-md"
+                      >
+                        <div className="relative aspect-video w-full overflow-hidden bg-muted">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={thumbnailUrl(item.videoId)}
+                            alt={item.title}
+                            className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                          />
+                          {dur && (
+                            <span className="absolute right-2 bottom-2 rounded-md bg-black/80 px-1.5 py-0.5 font-mono text-xs text-white">
+                              {dur}
+                            </span>
+                          )}
+                          {item.isAutoGenerated && (
+                            <Badge
+                              variant="secondary"
+                              className="absolute top-2 left-2 bg-background/90 text-[11px] backdrop-blur"
+                            >
+                              Auto captions
+                            </Badge>
+                          )}
+                        </div>
+
+                        <CardContent className="space-y-3 p-4">
+                          <div className="space-y-1">
+                            <h3 className="line-clamp-2 text-sm font-semibold leading-snug">
+                              {item.title}
+                            </h3>
+                            {item.channel && (
+                              <p className="truncate text-xs text-muted-foreground">
+                                {item.channel}
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between text-xs text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                {item.completed ? (
+                                  <>
+                                    <CheckCircle2 className="size-3.5 text-emerald-500" />
+                                    Completed
+                                  </>
+                                ) : (
+                                  <>
+                                    Chunk {Math.min(item.currentChunk + 1, item.totalChunks)} /{" "}
+                                    {item.totalChunks}
+                                  </>
+                                )}
+                              </span>
+                              <span>{pct}%</span>
+                            </div>
+                            <Progress value={pct} className="h-1.5" />
+                          </div>
+
+                          <Button
+                            asChild
+                            variant="secondary"
+                            className="h-11 w-full rounded-md py-2.5 text-sm font-medium"
+                          >
+                            <Link href={`/practice/${item.videoId}`}>
+                              <Play className="size-3.5" />
+                              {item.completed ? "Review / Practice again" : "Resume"}
+                            </Link>
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          </>
+        )}
       </main>
     </div>
+  );
+}
+
+export default function HomePage() {
+  return (
+    <Suspense fallback={<DashboardSkeleton />}>
+      <DashboardContent />
+    </Suspense>
   );
 }

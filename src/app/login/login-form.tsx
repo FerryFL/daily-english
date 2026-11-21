@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Headphones, Loader2 } from "lucide-react";
+import Image from "next/image";
+import { Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -44,9 +45,14 @@ export function LoginForm({ next, authError }: { next: string; authError: boolea
       <CardContent className="space-y-6 p-7">
         {/* Brand & short copy */}
         <div className="flex flex-col items-center space-y-3 text-center">
-          <div className="flex size-11 items-center justify-center rounded-xl bg-[#10B981] text-zinc-950 shadow-sm">
-            <Headphones className="size-5" />
-          </div>
+          <Image
+            src="/logo.png"
+            alt="Daily English"
+            width={52}
+            height={52}
+            priority
+            className="size-13 rounded-xl object-cover shadow-sm"
+          />
           <div className="space-y-1">
             <p className="text-xs font-semibold tracking-wider text-[#10B981] uppercase dark:text-[#34D399]">
               Daily English

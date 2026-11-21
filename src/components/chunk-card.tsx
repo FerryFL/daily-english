@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, type ClipboardEvent, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import {
   ArrowRight,
   Check,
@@ -60,31 +60,28 @@ function parseAnswerSlots(answer: string): AnswerSlot[] {
   );
 }
 
-/** Extract typed characters for each input slot from the stored string value. */
-function getSlotValues(answer: string, stored: string): string[] {
-  const slots = parseAnswerSlots(answer);
-  const inputCount = slots.filter((s) => s.kind === "input").length;
-  const out = Array<string>(inputCount).fill("");
-  if (!stored) return out;
+/** Extract only the alphanumeric typed letters from stored value. */
+function extractLetters(stored: string, maxLen: number): string {
+  return stored.replace(/[^A-Za-z0-9]/g, "").slice(0, maxLen);
+}
 
-  // Stored value aligns 1-to-1 with `answer` characters (spaces = empty).
-  for (let i = 0; i < slots.length && i < stored.length; i++) {
-    const slot = slots[i];
-    if (slot.kind === "input") {
-      const ch = stored[i];
-      out[slot.slotIdx] = ch && ch !== " " ? ch : "";
+/** Reconstruct stored value with fixed separators (e.g. apostrophe in "don't"). */
+function formatWithSeparators(answer: string, letters: string): string {
+  if (!letters) return "";
+  const slots = parseAnswerSlots(answer);
+  let out = "";
+  for (const s of slots) {
+    if (s.kind === "input") {
+      if (s.slotIdx < letters.length) {
+        out += letters[s.slotIdx];
+      } else {
+        break;
+      }
+    } else if (out.length > 0) {
+      out += s.char;
     }
   }
   return out;
-}
-
-/** Rebuild the stored string value from slot characters, preserving fixed separators. */
-function buildStoredValue(answer: string, slotChars: string[]): string {
-  const slots = parseAnswerSlots(answer);
-  if (slotChars.every((c) => !c)) return "";
-  return slots
-    .map((s) => (s.kind === "fixed" ? s.char : slotChars[s.slotIdx] || " "))
-    .join("");
 }
 
 function formatTime(sec: number): string {
@@ -114,140 +111,72 @@ export function ChunkCard({
   onReveal,
   onNext,
 }: ChunkCardProps) {
-  const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
+  const inputRefs = useRef<Map<number, HTMLInputElement>>(new Map());
+  const [focusedBlankId, setFocusedBlankId] = useState<number | null>(null);
 
   const blanks = useMemo(
     () => tokens.filter((t): t is BlankToken => t.kind === "blank"),
     [tokens],
   );
 
-  // Ordered list of all editable letter slots across all open blanks.
-  const openSlots = useMemo(() => {
-    const list: { blankId: number; slotIdx: number; answer: string }[] = [];
-    for (const b of blanks) {
-      const st = statuses[b.id] ?? "idle";
-      if (st === "correct" || st === "almost" || st === "revealed") continue;
-      for (const s of parseAnswerSlots(b.answer)) {
-        if (s.kind === "input") {
-          list.push({ blankId: b.id, slotIdx: s.slotIdx, answer: b.answer });
-        }
-      }
-    }
-    return list;
-  }, [blanks, statuses]);
+  const openBlankIds = useMemo(
+    () =>
+      blanks
+        .filter((b) => {
+          const st = statuses[b.id] ?? "idle";
+          return st !== "correct" && st !== "almost" && st !== "revealed";
+        })
+        .map((b) => b.id),
+    [blanks, statuses],
+  );
 
-  const firstOpenKey =
-    openSlots.length > 0 ? `${openSlots[0].blankId}:${openSlots[0].slotIdx}` : null;
+  const firstOpenBlankId = openBlankIds[0] ?? null;
 
   useEffect(() => {
-    if (!firstOpenKey) return;
+    if (firstOpenBlankId === null) return;
     const t = setTimeout(() => {
-      inputRefs.current.get(firstOpenKey)?.focus();
+      inputRefs.current.get(firstOpenBlankId)?.focus();
     }, 60);
     return () => clearTimeout(t);
-  }, [chunkIndex, firstOpenKey]);
-
-  const focusSlot = (blankId: number, slotIdx: number) => {
-    inputRefs.current.get(`${blankId}:${slotIdx}`)?.focus();
-  };
+  }, [chunkIndex, firstOpenBlankId]);
 
   const isBlankLocked = (blankId: number) => {
     const st = statuses[blankId] ?? "idle";
     return st === "correct" || st === "almost" || st === "revealed";
   };
 
-  const handleSlotChange = (blank: BlankToken, slotIdx: number, raw: string) => {
+  const handleWordChange = (blank: BlankToken, raw: string, inputCount: number) => {
     if (isBlankLocked(blank.id)) return;
-    const cleaned = raw.replace(/[^A-Za-z0-9]/g, "");
-    const ch = cleaned.slice(-1);
-    const chars = getSlotValues(blank.answer, values[blank.id] ?? "");
-    chars[slotIdx] = ch;
-    onValueChange(blank.id, buildStoredValue(blank.answer, chars));
+    const letters = extractLetters(raw, inputCount);
+    onValueChange(blank.id, formatWithSeparators(blank.answer, letters));
 
-    if (!ch) return;
-
-    // Move to the next letter slot, or the first slot of the next open blank.
-    // On the very last slot of the last blank, do NOT auto-check — let the user click Check.
-    const pos = openSlots.findIndex(
-      (s) => s.blankId === blank.id && s.slotIdx === slotIdx,
-    );
-    if (pos >= 0 && pos + 1 < openSlots.length) {
-      const next = openSlots[pos + 1];
-      focusSlot(next.blankId, next.slotIdx);
+    // Only move focus once the entire word is filled; never auto-check on the last blank.
+    if (letters.length === inputCount) {
+      const idx = openBlankIds.indexOf(blank.id);
+      if (idx >= 0 && idx + 1 < openBlankIds.length) {
+        const nextBlankId = openBlankIds[idx + 1];
+        inputRefs.current.get(nextBlankId)?.focus();
+      }
     }
   };
 
-  const handleSlotKeyDown = (
+  const handleWordKeyDown = (
     blank: BlankToken,
-    slotIdx: number,
+    letters: string,
     e: KeyboardEvent<HTMLInputElement>,
   ) => {
     if (isBlankLocked(blank.id)) {
       e.preventDefault();
       return;
     }
-    const pos = openSlots.findIndex(
-      (s) => s.blankId === blank.id && s.slotIdx === slotIdx,
-    );
 
-    if (e.key === "Backspace") {
-      const chars = getSlotValues(blank.answer, values[blank.id] ?? "");
-      if (chars[slotIdx]) {
+    if (e.key === "Backspace" && letters.length === 0) {
+      const idx = openBlankIds.indexOf(blank.id);
+      if (idx > 0) {
         e.preventDefault();
-        chars[slotIdx] = "";
-        onValueChange(blank.id, buildStoredValue(blank.answer, chars));
-      } else if (pos > 0) {
-        e.preventDefault();
-        const prev = openSlots[pos - 1];
-        const prevChars = getSlotValues(prev.answer, values[prev.blankId] ?? "");
-        prevChars[prev.slotIdx] = "";
-        onValueChange(prev.blankId, buildStoredValue(prev.answer, prevChars));
-        focusSlot(prev.blankId, prev.slotIdx);
+        const prevBlankId = openBlankIds[idx - 1];
+        inputRefs.current.get(prevBlankId)?.focus();
       }
-      return;
-    }
-
-    if (e.key === "ArrowLeft" && pos > 0) {
-      e.preventDefault();
-      const prev = openSlots[pos - 1];
-      focusSlot(prev.blankId, prev.slotIdx);
-      return;
-    }
-
-    if (e.key === "ArrowRight" && pos >= 0 && pos + 1 < openSlots.length) {
-      e.preventDefault();
-      const next = openSlots[pos + 1];
-      focusSlot(next.blankId, next.slotIdx);
-    }
-  };
-
-  const handleSlotPaste = (
-    blank: BlankToken,
-    slotIdx: number,
-    e: ClipboardEvent<HTMLInputElement>,
-  ) => {
-    if (isBlankLocked(blank.id)) {
-      e.preventDefault();
-      return;
-    }
-    const pasted = e.clipboardData.getData("text").replace(/[^A-Za-z0-9]/g, "");
-    if (!pasted) return;
-    e.preventDefault();
-
-    const chars = getSlotValues(blank.answer, values[blank.id] ?? "");
-    let lastFilled = slotIdx;
-    for (let i = 0; i < pasted.length && slotIdx + i < chars.length; i++) {
-      chars[slotIdx + i] = pasted[i];
-      lastFilled = slotIdx + i;
-    }
-    onValueChange(blank.id, buildStoredValue(blank.answer, chars));
-
-    const pos = openSlots.findIndex(
-      (s) => s.blankId === blank.id && s.slotIdx === lastFilled,
-    );
-    if (pos >= 0 && pos + 1 < openSlots.length) {
-      const next = openSlots[pos + 1];
-      focusSlot(next.blankId, next.slotIdx);
     }
   };
 
@@ -351,7 +280,11 @@ export function ChunkCard({
               const locked =
                 status === "correct" || status === "almost" || status === "revealed";
               const slots = parseAnswerSlots(tok.answer);
-              const typedChars = getSlotValues(tok.answer, values[tok.id] ?? "");
+              const inputCount = slots.filter((s) => s.kind === "input").length;
+              const typedLetters = extractLetters(values[tok.id] ?? "", inputCount);
+              const isFocused = focusedBlankId === tok.id && !locked;
+              const activeSlotIdx = Math.min(typedLetters.length, Math.max(0, inputCount - 1));
+              const isLastOpen = openBlankIds[openBlankIds.length - 1] === tok.id;
 
               return (
                 <span
@@ -361,7 +294,34 @@ export function ChunkCard({
                   <span className="inline-flex items-baseline gap-0.5">
                     {tok.prefix && <span>{tok.prefix}</span>}
 
-                    <span className="inline-flex items-baseline gap-1">
+                    {/* Single native input per word overlaid on per-letter visual boxes (smooth on mobile IME) */}
+                    <span className="relative inline-flex items-baseline gap-1">
+                      <input
+                        ref={(el) => {
+                          if (el) inputRefs.current.set(tok.id, el);
+                          else inputRefs.current.delete(tok.id);
+                        }}
+                        type="text"
+                        inputMode="text"
+                        enterKeyHint={isLastOpen ? "done" : "next"}
+                        maxLength={inputCount}
+                        value={status === "revealed" ? extractLetters(tok.answer, inputCount) : typedLetters}
+                        readOnly={locked}
+                        disabled={locked}
+                        autoComplete="off"
+                        autoCorrect="off"
+                        autoCapitalize="off"
+                        spellCheck={false}
+                        onFocus={() => setFocusedBlankId(tok.id)}
+                        onBlur={() =>
+                          setFocusedBlankId((cur) => (cur === tok.id ? null : cur))
+                        }
+                        onChange={(e) => handleWordChange(tok, e.target.value, inputCount)}
+                        onKeyDown={(e) => handleWordKeyDown(tok, typedLetters, e)}
+                        aria-label={`Blank ${tok.id + 1}`}
+                        className="absolute inset-0 z-10 size-full cursor-text opacity-0 disabled:cursor-default"
+                      />
+
                       {slots.map((slot, idx) => {
                         if (slot.kind === "fixed") {
                           return (
@@ -377,51 +337,38 @@ export function ChunkCard({
                         const cellVal =
                           status === "revealed"
                             ? slot.char
-                            : (typedChars[slot.slotIdx] ?? "");
-                        const key = `${tok.id}:${slot.slotIdx}`;
+                            : (typedLetters[slot.slotIdx] ?? "");
                         const isLetterMatch =
                           status === "wrong" &&
                           cellVal.length > 0 &&
                           cellVal.toLowerCase() === slot.char.toLowerCase();
+                        const isActiveCell = isFocused && slot.slotIdx === activeSlotIdx;
 
                         return (
-                          <input
-                            key={key}
-                            ref={(el) => {
-                              if (el) inputRefs.current.set(key, el);
-                              else inputRefs.current.delete(key);
-                            }}
-                            type="text"
-                            inputMode="text"
-                            maxLength={2}
-                            value={cellVal}
-                            readOnly={locked}
-                            disabled={locked}
-                            autoComplete="off"
-                            autoCorrect="off"
-                            autoCapitalize="off"
-                            spellCheck={false}
-                            onChange={(e) =>
-                              handleSlotChange(tok, slot.slotIdx, e.target.value)
-                            }
-                            onKeyDown={(e) => handleSlotKeyDown(tok, slot.slotIdx, e)}
-                            onPaste={(e) => handleSlotPaste(tok, slot.slotIdx, e)}
-                            aria-label={`Blank ${tok.id + 1} letter ${slot.slotIdx + 1}`}
+                          <span
+                            key={`s-${idx}`}
+                            aria-hidden
                             className={cn(
-                              "h-9 w-6 rounded-t-md border-b-2 bg-muted/40 text-center font-mono text-xl font-semibold outline-none transition-colors disabled:cursor-default disabled:opacity-100 sm:h-10 sm:w-7 sm:text-2xl",
+                              "inline-flex h-9 w-6 items-center justify-center rounded-t-md border-b-2 bg-muted/40 font-mono text-xl font-semibold transition-colors sm:h-10 sm:w-7 sm:text-2xl",
                               status === "idle" &&
-                                "border-muted-foreground/50 text-foreground focus:border-[#10B981] focus:bg-[#10B981]/10 focus:text-[#34D399]",
+                                !isActiveCell &&
+                                "border-muted-foreground/50 text-foreground",
+                              status === "idle" &&
+                                isActiveCell &&
+                                "border-[#10B981] bg-[#10B981]/10 text-[#34D399]",
                               (status === "correct" || isLetterMatch) &&
                                 "border-[#10B981] bg-[#10B981]/15 text-[#10B981] dark:text-[#34D399]",
                               status === "almost" &&
                                 "border-amber-500 bg-amber-500/15 text-amber-600 dark:text-amber-400",
                               status === "wrong" &&
                                 !isLetterMatch &&
-                                "border-rose-500 bg-rose-500/15 text-rose-500 focus:border-rose-400 dark:text-rose-400",
+                                "border-rose-500 bg-rose-500/15 text-rose-500 dark:text-rose-400",
                               status === "revealed" &&
                                 "border-slate-500 bg-slate-500/15 text-slate-600 dark:text-slate-300",
                             )}
-                          />
+                          >
+                            {cellVal}
+                          </span>
                         );
                       })}
                     </span>
@@ -532,10 +479,8 @@ export function ChunkCard({
           Reveal
         </span>
         <span className="flex items-center gap-1.5">
-          <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-[11px]">
-            ← / →
-          </kbd>
-          Move letter
+          <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-[11px]">Tab</kbd>
+          Next blank
         </span>
       </div>
     </div>

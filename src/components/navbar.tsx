@@ -1,5 +1,6 @@
+import Image from "next/image";
 import Link from "next/link";
-import { Headphones, LogOut, Shield } from "lucide-react";
+import { LogOut, Shield } from "lucide-react";
 import { signOut } from "@/app/auth/actions";
 import { isAdminEmail } from "@/lib/demo";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -36,11 +37,16 @@ export function Navbar({ user }: NavbarProps) {
       <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4 sm:px-6">
         <Link
           href="/"
-          className="flex items-center gap-2 font-semibold tracking-tight text-foreground"
+          className="flex items-center gap-2.5 font-semibold tracking-tight text-foreground"
         >
-          <span className="flex size-8 items-center justify-center rounded-lg bg-[#10B981] text-zinc-950">
-            <Headphones className="size-4" />
-          </span>
+          <Image
+            src="/logo.png"
+            alt="Daily English"
+            width={36}
+            height={36}
+            priority
+            className="size-9 rounded-lg object-cover"
+          />
           <span>Daily English</span>
         </Link>
 

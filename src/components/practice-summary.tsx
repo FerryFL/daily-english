@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, CheckCircle2, Play, RotateCcw, Trophy } from "lucide-react";
 import type { Chunk } from "@/lib/chunker";
@@ -8,6 +9,15 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 export interface CompletedChunkRecord {
   chunkIndex: number;
@@ -34,6 +44,7 @@ export function PracticeSummary({
   onReplayChunk,
   onPracticeAgain,
 }: PracticeSummaryProps) {
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const byChunk = new Map<number, CompletedChunkRecord>();
   for (const r of records) byChunk.set(r.chunkIndex, r);
 
@@ -188,14 +199,45 @@ export function PracticeSummary({
 
       {/* Footer actions */}
       <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-        <Button
-          type="button"
-          onClick={onPracticeAgain}
-          className="rounded-md bg-[#10B981] font-semibold text-zinc-950 hover:bg-[#34D399]"
-        >
-          <RotateCcw className="size-4" />
-          Practice again
-        </Button>
+        <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+          <DialogTrigger asChild>
+            <Button
+              type="button"
+              className="rounded-md bg-[#10B981] font-semibold text-zinc-950 hover:bg-[#34D399]"
+            >
+              <RotateCcw className="size-4" />
+              Reset progress
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Reset progress?</DialogTitle>
+              <DialogDescription>
+                Are you sure? The progress will be reset to 0.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2 sm:gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setConfirmOpen(false)}
+                className="rounded-md"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={() => {
+                  setConfirmOpen(false);
+                  onPracticeAgain();
+                }}
+                className="rounded-md bg-red-500 font-semibold text-white hover:bg-red-600"
+              >
+                Yes, reset
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         <Button asChild variant="outline" className="rounded-md">
           <Link href="/">
             <ArrowLeft className="size-4" />

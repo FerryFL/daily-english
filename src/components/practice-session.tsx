@@ -331,40 +331,6 @@ export function PracticeSession({
             </span>
           </div>
           <Progress value={progressPct} className="h-1.5" />
-
-          {/* Episode / Chunk navigator (can revisit any unlocked chunk without altering progress) */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1">
-            {chunks.map((c) => {
-              const isCurrent = !showSummary && c.index === chunkIndex;
-              const isUnlockedItem = c.index <= maxUnlockedChunk;
-              return (
-                <button
-                  key={c.index}
-                  type="button"
-                  disabled={!isUnlockedItem}
-                  onClick={() => handleSelectChunk(c.index)}
-                  title={
-                    isUnlockedItem
-                      ? `Go to Chunk ${c.index + 1}`
-                      : `Complete Chunk ${maxUnlockedChunk + 1} to unlock`
-                  }
-                  className={cn(
-                    "inline-flex h-8 shrink-0 items-center gap-1 rounded-md border px-2.5 font-mono text-xs font-medium transition-colors",
-                    isCurrent &&
-                      "border-[#10B981] bg-[#10B981] text-zinc-950 font-semibold",
-                    !isCurrent &&
-                      isUnlockedItem &&
-                      "border-[#10B981]/30 bg-[#10B981]/10 text-[#10B981] hover:bg-[#10B981]/20 dark:text-[#34D399]",
-                    !isUnlockedItem &&
-                      "cursor-not-allowed border-border/60 bg-muted/40 text-muted-foreground/50",
-                  )}
-                >
-                  {!isUnlockedItem && <Lock className="size-3" />}
-                  {c.index + 1}
-                </button>
-              );
-            })}
-          </div>
         </div>
 
         {showSummary ? (
@@ -398,6 +364,45 @@ export function PracticeSession({
             onNext={handleNext}
           />
         ) : null}
+
+        {/* Chapter / Chunk navigator moved below text, Check, and Next */}
+        {!showSummary && chunks.length > 0 && (
+          <div className="space-y-2 border-t pt-4">
+            <p className="text-xs font-medium text-muted-foreground">Chapters / Chunks</p>
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+              {chunks.map((c) => {
+                const isCurrent = c.index === chunkIndex;
+                const isUnlockedItem = c.index <= maxUnlockedChunk;
+                return (
+                  <button
+                    key={c.index}
+                    type="button"
+                    disabled={!isUnlockedItem}
+                    onClick={() => handleSelectChunk(c.index)}
+                    title={
+                      isUnlockedItem
+                        ? `Go to Chunk ${c.index + 1}`
+                        : `Complete Chunk ${maxUnlockedChunk + 1} to unlock`
+                    }
+                    className={cn(
+                      "inline-flex h-8 shrink-0 items-center gap-1 rounded-md border px-2.5 font-mono text-xs font-medium transition-colors",
+                      isCurrent &&
+                        "border-[#10B981] bg-[#10B981] font-semibold text-zinc-950",
+                      !isCurrent &&
+                        isUnlockedItem &&
+                        "border-[#10B981]/30 bg-[#10B981]/10 text-[#10B981] hover:bg-[#10B981]/20 dark:text-[#34D399]",
+                      !isUnlockedItem &&
+                        "cursor-not-allowed border-border/60 bg-muted/40 text-muted-foreground/50",
+                    )}
+                  >
+                    {!isUnlockedItem && <Lock className="size-3" />}
+                    {c.index + 1}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

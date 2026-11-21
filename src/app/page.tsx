@@ -1,12 +1,13 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { desc, eq, sql } from "drizzle-orm";
-import { CheckCircle2, Headphones, Play, Sparkles, Target, Video as VideoIcon } from "lucide-react";
+import { CheckCircle2, Clock, Headphones, Play, Sparkles, Target } from "lucide-react";
 import { getDb, isDbConfigured } from "@/db";
 import { chunkAttempts, progress, videos } from "@/db/schema";
 import { getOptionalUser } from "@/lib/supabase/server";
 import { getActiveDemoVideo } from "@/lib/video-service";
 import { thumbnailUrl } from "@/lib/youtube";
+import { DeleteVideoButton } from "@/components/delete-video-button";
 import { Navbar } from "@/components/navbar";
 import { VideoUrlForm } from "@/components/video-url-form";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +23,14 @@ function formatDuration(sec: number | null): string | null {
   return `${mins}:${rem.toString().padStart(2, "0")}`;
 }
 
+function formatTotalMinutes(totalSec: number): string {
+  const mins = Math.round(totalSec / 60);
+  if (mins < 60) return `${mins} min`;
+  const hrs = Math.floor(mins / 60);
+  const rem = mins % 60;
+  return rem > 0 ? `${hrs}h ${rem}m` : `${hrs}h`;
+}
+
 function DashboardSkeleton() {
   return (
     <div className="mx-auto w-full max-w-5xl space-y-10 px-4 py-10 sm:px-6">
@@ -29,7 +38,8 @@ function DashboardSkeleton() {
         <Skeleton className="h-9 w-64" />
         <Skeleton className="h-12 w-full max-w-2xl rounded-xl" />
       </div>
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <Skeleton className="h-24 rounded-2xl" />
         <Skeleton className="h-24 rounded-2xl" />
         <Skeleton className="h-24 rounded-2xl" />
         <Skeleton className="h-24 rounded-2xl" />
@@ -62,12 +72,12 @@ async function DashboardContent() {
     completed: boolean;
   }[] = [];
 
-  let stats = { videosCount: 0, wordsCorrect: 0, accuracy: 0 };
+  let stats = { videosCompleted: 0, totalDurationSec: 0, wordsCorrect: 0, accuracy: 0 };
   const demoVideo = user ? null : await getActiveDemoVideo();
 
   if (user && isDbConfigured()) {
     const db = getDb();
-    const [recentRows, [agg]] = await Promise.all([
+    const [recentRows, [progAgg], [attemptAgg]] = await Promise.all([
       db
         .select({
           videoId: videos.id,
@@ -86,6 +96,14 @@ async function DashboardContent() {
         .limit(12),
       db
         .select({
+          completedCount: sql<number>`coalesce(sum(case when ${progress.completed} then 1 else 0 end), 0)::int`,
+          totalDurationSec: sql<number>`coalesce(sum(${videos.durationSec}), 0)::int`,
+        })
+        .from(progress)
+        .innerJoin(videos, eq(progress.videoId, videos.id))
+        .where(eq(progress.userId, user.id)),
+      db
+        .select({
           blanksTotal: sql<number>`coalesce(sum(${chunkAttempts.blanksTotal}), 0)::int`,
           blanksCorrect: sql<number>`coalesce(sum(${chunkAttempts.blanksCorrect}), 0)::int`,
         })
@@ -94,10 +112,11 @@ async function DashboardContent() {
     ]);
 
     recent = recentRows;
-    const total = agg?.blanksTotal ?? 0;
-    const correct = agg?.blanksCorrect ?? 0;
+    const total = attemptAgg?.blanksTotal ?? 0;
+    const correct = attemptAgg?.blanksCorrect ?? 0;
     stats = {
-      videosCount: recentRows.length,
+      videosCompleted: progAgg?.completedCount ?? 0,
+      totalDurationSec: progAgg?.totalDurationSec ?? 0,
       wordsCorrect: correct,
       accuracy: total > 0 ? Math.round((correct / total) * 100) : 0,
     };
@@ -183,22 +202,38 @@ async function DashboardContent() {
         ) : (
           <>
             {/* Stats */}
-            <section className="grid gap-4 sm:grid-cols-3">
+            <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
               <Card className="rounded-2xl">
                 <CardContent className="flex items-center gap-4 p-5">
-                  <div className="flex size-10 items-center justify-center rounded-xl bg-[#10B981]/15 text-[#10B981] dark:text-[#34D399]">
-                    <VideoIcon className="size-5" />
+                  <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#10B981]/15 text-[#10B981] dark:text-[#34D399]">
+                    <CheckCircle2 className="size-5" />
                   </div>
                   <div>
-                    <p className="text-xs font-medium text-muted-foreground">Videos practiced</p>
-                    <p className="text-2xl font-bold">{stats.videosCount}</p>
+                    <p className="text-xs font-medium text-muted-foreground">Videos completed</p>
+                    <p className="text-2xl font-bold text-[#10B981] dark:text-[#34D399]">
+                      {stats.videosCompleted}
+                    </p>
                   </div>
                 </CardContent>
               </Card>
 
               <Card className="rounded-2xl">
                 <CardContent className="flex items-center gap-4 p-5">
-                  <div className="flex size-10 items-center justify-center rounded-xl bg-[#10B981]/15 text-[#10B981] dark:text-[#34D399]">
+                  <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#10B981]/15 text-[#10B981] dark:text-[#34D399]">
+                    <Clock className="size-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground">Total video time</p>
+                    <p className="text-2xl font-bold text-[#10B981] dark:text-[#34D399]">
+                      {formatTotalMinutes(stats.totalDurationSec)}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="rounded-2xl">
+                <CardContent className="flex items-center gap-4 p-5">
+                  <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#10B981]/15 text-[#10B981] dark:text-[#34D399]">
                     <Sparkles className="size-5" />
                   </div>
                   <div>
@@ -214,12 +249,14 @@ async function DashboardContent() {
 
               <Card className="rounded-2xl">
                 <CardContent className="flex items-center gap-4 p-5">
-                  <div className="flex size-10 items-center justify-center rounded-xl bg-[#10B981]/15 text-[#10B981] dark:text-[#34D399]">
+                  <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#10B981]/15 text-[#10B981] dark:text-[#34D399]">
                     <Target className="size-5" />
                   </div>
                   <div>
                     <p className="text-xs font-medium text-muted-foreground">Overall accuracy</p>
-                    <p className="text-2xl font-bold">{stats.accuracy}%</p>
+                    <p className="text-2xl font-bold text-[#10B981] dark:text-[#34D399]">
+                      {stats.accuracy}%
+                    </p>
                   </div>
                 </CardContent>
               </Card>
@@ -318,16 +355,18 @@ async function DashboardContent() {
                             <Progress value={pct} className="h-1.5" />
                           </div>
 
-                          <Button
-                            asChild
-                            variant="secondary"
-                            className="h-11 w-full rounded-md py-2.5 text-sm font-medium"
-                          >
-                            <Link href={`/practice/${item.videoId}`}>
-                              <Play className="size-3.5" />
-                              {item.completed ? "Review / Practice again" : "Resume"}
-                            </Link>
-                          </Button>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              asChild
+                              className="h-11 flex-1 rounded-md bg-[#10B981] py-2.5 text-sm font-semibold text-zinc-950 hover:bg-[#34D399]"
+                            >
+                              <Link href={`/practice/${item.videoId}`}>
+                                <Play className="size-3.5" />
+                                {item.completed ? "Review / Practice again" : "Resume"}
+                              </Link>
+                            </Button>
+                            <DeleteVideoButton videoId={item.videoId} title={item.title} />
+                          </div>
                         </CardContent>
                       </Card>
                     );

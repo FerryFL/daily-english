@@ -256,7 +256,7 @@ export function ChunkCard({
 
       {/* Main sentence card */}
       <Card className="rounded-2xl shadow-sm">
-        <CardContent className="space-y-5 p-6 sm:p-8">
+        <CardContent className="space-y-4 p-5 sm:p-6">
           {unlocked && (
             <div className="flex items-center gap-2 rounded-xl bg-[#10B981]/15 px-3.5 py-2 text-sm font-medium text-[#10B981] dark:text-[#34D399]">
               <Sparkles className="size-4 shrink-0" />
@@ -266,11 +266,11 @@ export function ChunkCard({
             </div>
           )}
 
-          <p className="text-xl leading-[2.6] font-medium tracking-tight text-foreground sm:text-2xl sm:leading-[2.7]">
+          <p className="text-lg leading-[1.9] font-medium tracking-tight text-foreground sm:text-xl sm:leading-[2]">
             {tokens.map((tok, i) => {
               if (tok.kind === "word") {
                 return (
-                  <span key={`w-${i}`} className="mr-2 inline-block">
+                  <span key={`w-${i}`} className="mr-1.5 inline-block">
                     {tok.text}
                   </span>
                 );
@@ -289,13 +289,13 @@ export function ChunkCard({
               return (
                 <span
                   key={`b-${tok.id}`}
-                  className="mr-2 inline-flex flex-col align-baseline"
+                  className="mr-1.5 inline-flex flex-col align-baseline"
                 >
                   <span className="inline-flex items-baseline gap-0.5">
                     {tok.prefix && <span>{tok.prefix}</span>}
 
                     {/* Single native input per word overlaid on per-letter visual boxes (smooth on mobile IME) */}
-                    <span className="relative inline-flex items-baseline gap-1">
+                    <span className="relative inline-flex items-baseline gap-0.5">
                       <input
                         ref={(el) => {
                           if (el) inputRefs.current.set(tok.id, el);
@@ -349,7 +349,7 @@ export function ChunkCard({
                             key={`s-${idx}`}
                             aria-hidden
                             className={cn(
-                              "inline-flex h-9 w-6 items-center justify-center rounded-t-md border-b-2 bg-muted/40 font-mono text-xl font-semibold transition-colors sm:h-10 sm:w-7 sm:text-2xl",
+                              "inline-flex h-8 w-5 items-center justify-center rounded-t-md border-b-2 bg-muted/40 font-mono text-lg font-semibold transition-colors sm:h-9 sm:w-6 sm:text-xl",
                               status === "idle" &&
                                 !isActiveCell &&
                                 "border-muted-foreground/50 text-foreground",

@@ -91,3 +91,26 @@ export async function resetVideoProgress(videoId: string, totalChunks: number) {
   revalidatePath("/");
   return { ok: true };
 }
+
+export async function deleteVideoProgress(videoId: string) {
+  if (!isDbConfigured()) return { ok: false };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false };
+
+  const db = getDb();
+  await Promise.all([
+    db
+      .delete(chunkAttempts)
+      .where(and(eq(chunkAttempts.userId, user.id), eq(chunkAttempts.videoId, videoId))),
+    db
+      .delete(progress)
+      .where(and(eq(progress.userId, user.id), eq(progress.videoId, videoId))),
+  ]);
+
+  revalidatePath("/");
+  return { ok: true };
+}

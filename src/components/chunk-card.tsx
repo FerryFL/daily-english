@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import type { BlankToken, Token } from "@/lib/blanker";
 import type { CheckResult } from "@/lib/checker";
+import { playClickSound, preloadClickSound } from "@/lib/sound";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -133,6 +134,10 @@ export function ChunkCard({
   const firstOpenBlankId = openBlankIds[0] ?? null;
 
   useEffect(() => {
+    preloadClickSound();
+  }, []);
+
+  useEffect(() => {
     if (firstOpenBlankId === null) return;
     const t = setTimeout(() => {
       inputRefs.current.get(firstOpenBlankId)?.focus();
@@ -147,7 +152,9 @@ export function ChunkCard({
 
   const handleWordChange = (blank: BlankToken, raw: string, inputCount: number) => {
     if (isBlankLocked(blank.id)) return;
+    const prevLetters = extractLetters(values[blank.id] ?? "", inputCount);
     const letters = extractLetters(raw, inputCount);
+    if (letters !== prevLetters) playClickSound();
     onValueChange(blank.id, formatWithSeparators(blank.answer, letters));
 
     // Only move focus once the entire word is filled; never auto-check on the last blank.
@@ -196,7 +203,7 @@ export function ChunkCard({
             className="rounded-md bg-[#10B981] px-4 font-semibold text-zinc-950 hover:bg-[#34D399]"
           >
             <RotateCcw className="size-4" />
-            Repeat chunk
+            Repeat part
           </Button>
 
           <ToggleGroup
@@ -209,15 +216,15 @@ export function ChunkCard({
             size="sm"
             aria-label="Playback speed"
           >
-            <ToggleGroupItem value="0.5" className="px-2.5 font-mono text-xs">
-              0.5×
-            </ToggleGroupItem>
-            <ToggleGroupItem value="0.75" className="px-2.5 font-mono text-xs">
-              0.75×
-            </ToggleGroupItem>
-            <ToggleGroupItem value="1" className="px-2.5 font-mono text-xs">
-              1×
-            </ToggleGroupItem>
+            {(["0.5", "0.75", "1"] as const).map((val) => (
+              <ToggleGroupItem
+                key={val}
+                value={val}
+                className="px-2.5 font-mono text-xs aria-pressed:border-[#10B981] aria-pressed:bg-[#10B981] aria-pressed:font-semibold aria-pressed:text-zinc-950 data-[state=on]:border-[#10B981] data-[state=on]:bg-[#10B981] data-[state=on]:font-semibold data-[state=on]:text-zinc-950 data-[state=on]:hover:bg-[#34D399] data-[state=on]:hover:text-zinc-950"
+              >
+                {val}×
+              </ToggleGroupItem>
+            ))}
           </ToggleGroup>
 
           <Tooltip>
@@ -435,7 +442,7 @@ export function ChunkCard({
                     className="h-10 w-full rounded-md"
                   >
                     <Lock className="size-3.5" />
-                    {isLastChunk ? "Finish" : "Next chunk"}
+                    {isLastChunk ? "Finish" : "Next part"}
                     <ArrowRight className="size-4" />
                   </Button>
                 </span>
@@ -454,7 +461,7 @@ export function ChunkCard({
               ? isDemo
                 ? "Finish demo"
                 : "Finish & view summary"
-              : "Next chunk"}
+              : "Next part"}
             <ArrowRight className="size-5" />
           </Button>
         )}

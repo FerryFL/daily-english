@@ -104,15 +104,15 @@ export function PracticeSummary({
           </div>
           <div className="text-center sm:text-left">
             <p className="text-2xl font-bold">{chunks.length}</p>
-            <p className="text-xs text-muted-foreground">Chunks completed</p>
+            <p className="text-xs text-muted-foreground">Parts completed</p>
           </div>
         </CardContent>
       </Card>
 
-      {/* Chunk timeline */}
+      {/* Part timeline */}
       <Card className="rounded-2xl">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Chunk timeline</CardTitle>
+          <CardTitle className="text-base">Part timeline</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-1.5">
@@ -125,7 +125,7 @@ export function PracticeSummary({
                   key={c.index}
                   type="button"
                   onClick={() => onReplayChunk(c.index)}
-                  title={`Chunk ${c.index + 1}: click to replay`}
+                  title={`Part ${c.index + 1}: click to replay`}
                   className={cn(
                     "size-7 rounded-md text-xs font-mono font-medium transition-transform hover:scale-110",
                     allGood &&
@@ -175,7 +175,7 @@ export function PracticeSummary({
                         {item.word}
                       </Badge>
                       <span className="font-mono text-xs text-muted-foreground">
-                        Chunk {item.chunkIndex + 1}
+                        Part {item.chunkIndex + 1}
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground">&ldquo;{item.text}&rdquo;</p>

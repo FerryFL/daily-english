@@ -12,7 +12,7 @@ export default function PracticeLoading() {
           <div className="space-y-1">
             <p className="font-medium">Preparing your listening session...</p>
             <p className="text-xs text-muted-foreground">
-              Fetching English captions, splitting into chunks, and choosing blanks.
+              Fetching English captions, splitting into parts, and choosing blanks.
             </p>
           </div>
         </CardContent>

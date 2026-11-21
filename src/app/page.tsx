@@ -145,6 +145,9 @@ async function DashboardContent() {
             <p className="text-muted-foreground">
               What do you want to listen to today? Paste any YouTube video to start.
             </p>
+            <p className="text-xs text-muted-foreground/80">
+              (Around 5 minutes video is recommended, max 15 minutes)
+            </p>
           </div>
           <VideoUrlForm isAuthenticated={Boolean(user)} />
         </section>
@@ -345,7 +348,7 @@ async function DashboardContent() {
                                   </>
                                 ) : (
                                   <>
-                                    Chunk {Math.min(item.currentChunk + 1, item.totalChunks)} /{" "}
+                                    Part {Math.min(item.currentChunk + 1, item.totalChunks)} /{" "}
                                     {item.totalChunks}
                                   </>
                                 )}

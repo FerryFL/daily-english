@@ -308,7 +308,7 @@ export function PracticeSession({
           }}
         />
 
-        {/* Video title, chunk progress & progress bar below video */}
+        {/* Video title, part progress & progress bar below video */}
         <div className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-2">
@@ -327,7 +327,7 @@ export function PracticeSession({
               )}
             </div>
             <span className="shrink-0 font-mono text-xs text-[#10B981] dark:text-[#34D399]">
-              {showSummary ? "Complete" : `Chunk ${chunkIndex + 1} / ${chunks.length}`}
+              {showSummary ? "Complete" : `Part ${chunkIndex + 1} / ${chunks.length}`}
             </span>
           </div>
           <Progress value={progressPct} className="h-1.5" />
@@ -365,10 +365,10 @@ export function PracticeSession({
           />
         ) : null}
 
-        {/* Chapter / Chunk navigator moved below text, Check, and Next */}
+        {/* Part navigator below text, Check, and Next */}
         {!showSummary && chunks.length > 0 && (
           <div className="space-y-2 border-t pt-4">
-            <p className="text-xs font-medium text-muted-foreground">Chapters / Chunks</p>
+            <p className="text-xs font-medium text-muted-foreground">Parts</p>
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
               {chunks.map((c) => {
                 const isCurrent = c.index === chunkIndex;
@@ -381,8 +381,8 @@ export function PracticeSession({
                     onClick={() => handleSelectChunk(c.index)}
                     title={
                       isUnlockedItem
-                        ? `Go to Chunk ${c.index + 1}`
-                        : `Complete Chunk ${maxUnlockedChunk + 1} to unlock`
+                        ? `Go to Part ${c.index + 1}`
+                        : `Complete Part ${maxUnlockedChunk + 1} to unlock`
                     }
                     className={cn(
                       "inline-flex h-8 shrink-0 items-center gap-1 rounded-md border px-2.5 font-mono text-xs font-medium transition-colors",

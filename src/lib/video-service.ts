@@ -3,7 +3,11 @@ import { eq } from "drizzle-orm";
 import { getDb, isDbConfigured } from "@/db";
 import { progress, settings, videos, type Video } from "@/db/schema";
 import { DEFAULT_DEMO_VIDEO } from "./demo";
-import { fetchTranscript } from "./transcript";
+import {
+  fetchTranscript,
+  MAX_VIDEO_DURATION_SEC,
+  TranscriptError,
+} from "./transcript";
 
 export const DEMO_SETTING_KEY = "demo_video_id";
 
@@ -19,7 +23,15 @@ export async function getOrFetchVideo(videoId: string): Promise<Video> {
       .from(videos)
       .where(eq(videos.id, videoId))
       .limit(1);
-    if (existing) return existing;
+    if (existing) {
+      if (existing.durationSec !== null && existing.durationSec > MAX_VIDEO_DURATION_SEC) {
+        throw new TranscriptError(
+          "This video is longer than 15 minutes. Please choose a shorter video (max 15 minutes).",
+          400,
+        );
+      }
+      return existing;
+    }
   }
 
   const fetched = await fetchTranscript(videoId);

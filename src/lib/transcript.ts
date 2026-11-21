@@ -10,10 +10,12 @@ export interface TranscriptResult {
   segments: Segment[];
 }
 
+export const MAX_VIDEO_DURATION_SEC = 15 * 60; // 15 minutes
+
 export class TranscriptError extends Error {
   constructor(
     message: string,
-    public status: 404 | 502,
+    public status: 400 | 404 | 502,
   ) {
     super(message);
   }
@@ -161,6 +163,13 @@ export async function fetchTranscript(videoId: string): Promise<TranscriptResult
   const channel = data.videoDetails?.author ?? null;
   const parsedDuration = Number(data.videoDetails?.lengthSeconds);
   const durationSec = Number.isFinite(parsedDuration) && parsedDuration > 0 ? parsedDuration : null;
+
+  if (durationSec !== null && durationSec > MAX_VIDEO_DURATION_SEC) {
+    throw new TranscriptError(
+      "This video is longer than 15 minutes. Please choose a shorter video (max 15 minutes).",
+      400,
+    );
+  }
 
   const allTracks = data.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? [];
   const englishTracks = allTracks.filter((t) =>

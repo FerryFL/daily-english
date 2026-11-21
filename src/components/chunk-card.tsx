@@ -27,7 +27,6 @@ export interface ChunkCardProps {
   chunkIndex: number;
   start: number;
   end: number;
-  fullText: string;
   tokens: Token[];
   values: Record<number, string>;
   statuses: Record<number, BlankStatus>;
@@ -96,7 +95,6 @@ export function ChunkCard({
   chunkIndex,
   start,
   end,
-  fullText,
   tokens,
   values,
   statuses,
@@ -411,8 +409,28 @@ export function ChunkCard({
           )}
 
           {unlocked && (
-            <p className="border-t pt-3 text-sm text-muted-foreground">
-              Full caption: &ldquo;{fullText}&rdquo;
+            <p className="border-t pt-3 text-sm leading-relaxed text-muted-foreground">
+              <span className="font-semibold text-[#10B981] dark:text-[#34D399]">
+                Full caption:{" "}
+              </span>
+              &ldquo;
+              {tokens.map((tok, i) => (
+                <span key={`fc-${i}`}>
+                  {i > 0 && " "}
+                  {tok.kind === "word" ? (
+                    tok.text
+                  ) : (
+                    <>
+                      {tok.prefix}
+                      <span className="font-semibold text-[#10B981] underline decoration-[#10B981] decoration-2 underline-offset-4 dark:text-[#34D399] dark:decoration-[#34D399]">
+                        {tok.answer}
+                      </span>
+                      {tok.suffix}
+                    </>
+                  )}
+                </span>
+              ))}
+              &rdquo;
             </p>
           )}
         </CardContent>

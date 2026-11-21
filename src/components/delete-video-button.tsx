@@ -42,10 +42,11 @@ export function DeleteVideoButton({
       <DialogTrigger asChild>
         <Button
           type="button"
+          variant="outline"
           size="icon"
           aria-label={`Delete ${title}`}
           title="Delete video"
-          className="size-11 shrink-0 rounded-md bg-red-700 text-white hover:bg-red-800"
+          className="size-11 shrink-0 rounded-md border-red-500/60 bg-transparent text-red-500 hover:border-red-600 hover:bg-red-600 hover:text-white active:bg-red-600 active:text-white"
         >
           <Trash2 className="size-4" />
         </Button>

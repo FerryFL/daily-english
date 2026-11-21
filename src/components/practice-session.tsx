@@ -333,7 +333,7 @@ export function PracticeSession({
           <Progress value={progressPct} className="h-1.5" />
 
           {!showSummary && chunks.length > 0 && (
-            <div className="flex items-center gap-1.5 overflow-x-auto pt-1 pb-1">
+            <div className="flex items-center gap-1.5 overflow-x-auto pt-1 pb-3">
               {chunks.map((c) => {
                 const isCurrent = c.index === chunkIndex;
                 const isUnlockedItem = c.index <= maxUnlockedChunk;
@@ -382,7 +382,6 @@ export function PracticeSession({
             chunkIndex={chunk.index}
             start={chunk.start}
             end={chunk.end}
-            fullText={chunk.text}
             tokens={tokens}
             values={values}
             statuses={statuses}

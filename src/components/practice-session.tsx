@@ -331,6 +331,41 @@ export function PracticeSession({
             </span>
           </div>
           <Progress value={progressPct} className="h-1.5" />
+
+          {!showSummary && chunks.length > 0 && (
+            <div className="flex items-center gap-1.5 overflow-x-auto pt-1 pb-1">
+              {chunks.map((c) => {
+                const isCurrent = c.index === chunkIndex;
+                const isUnlockedItem = c.index <= maxUnlockedChunk;
+                return (
+                  <button
+                    key={c.index}
+                    type="button"
+                    disabled={!isUnlockedItem}
+                    onClick={() => handleSelectChunk(c.index)}
+                    title={
+                      isUnlockedItem
+                        ? `Go to Part ${c.index + 1}`
+                        : `Complete Part ${maxUnlockedChunk + 1} to unlock`
+                    }
+                    className={cn(
+                      "inline-flex h-8 shrink-0 items-center gap-1 rounded-md border px-2.5 font-mono text-xs font-medium transition-colors",
+                      isCurrent &&
+                        "border-[#10B981] bg-[#10B981] font-semibold text-zinc-950",
+                      !isCurrent &&
+                        isUnlockedItem &&
+                        "border-[#10B981]/30 bg-[#10B981]/10 text-[#10B981] hover:bg-[#10B981]/20 dark:text-[#34D399]",
+                      !isUnlockedItem &&
+                        "cursor-not-allowed border-border/60 bg-muted/40 text-muted-foreground/50",
+                    )}
+                  >
+                    {!isUnlockedItem && <Lock className="size-3" />}
+                    {c.index + 1}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {showSummary ? (
@@ -364,45 +399,6 @@ export function PracticeSession({
             onNext={handleNext}
           />
         ) : null}
-
-        {/* Part navigator below text, Check, and Next */}
-        {!showSummary && chunks.length > 0 && (
-          <div className="space-y-2 border-t pt-4">
-            <p className="text-xs font-medium text-muted-foreground">Parts</p>
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-              {chunks.map((c) => {
-                const isCurrent = c.index === chunkIndex;
-                const isUnlockedItem = c.index <= maxUnlockedChunk;
-                return (
-                  <button
-                    key={c.index}
-                    type="button"
-                    disabled={!isUnlockedItem}
-                    onClick={() => handleSelectChunk(c.index)}
-                    title={
-                      isUnlockedItem
-                        ? `Go to Part ${c.index + 1}`
-                        : `Complete Part ${maxUnlockedChunk + 1} to unlock`
-                    }
-                    className={cn(
-                      "inline-flex h-8 shrink-0 items-center gap-1 rounded-md border px-2.5 font-mono text-xs font-medium transition-colors",
-                      isCurrent &&
-                        "border-[#10B981] bg-[#10B981] font-semibold text-zinc-950",
-                      !isCurrent &&
-                        isUnlockedItem &&
-                        "border-[#10B981]/30 bg-[#10B981]/10 text-[#10B981] hover:bg-[#10B981]/20 dark:text-[#34D399]",
-                      !isUnlockedItem &&
-                        "cursor-not-allowed border-border/60 bg-muted/40 text-muted-foreground/50",
-                    )}
-                  >
-                    {!isUnlockedItem && <Lock className="size-3" />}
-                    {c.index + 1}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
       </main>
     </div>
   );

@@ -174,9 +174,23 @@ async function DashboardContent() {
                     alt={demoVideo.title}
                     className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
                   />
-                  {formatDuration(demoVideo.durationSec) && (
+                  {formatDuration(
+                    demoVideo.clipStartSec !== null && demoVideo.clipEndSec !== null
+                      ? demoVideo.clipEndSec - demoVideo.clipStartSec
+                      : demoVideo.durationSec,
+                  ) && (
                     <span className="absolute right-2 bottom-2 rounded-md bg-black/80 px-1.5 py-0.5 font-mono text-xs text-white">
-                      {formatDuration(demoVideo.durationSec)}
+                      {formatDuration(
+                        demoVideo.clipStartSec !== null && demoVideo.clipEndSec !== null
+                          ? demoVideo.clipEndSec - demoVideo.clipStartSec
+                          : demoVideo.durationSec,
+                      )}
+                    </span>
+                  )}
+                  {demoVideo.clipStartSec !== null && demoVideo.clipEndSec !== null && (
+                    <span className="absolute bottom-2 left-2 flex items-center gap-1 rounded-md bg-black/80 px-1.5 py-0.5 font-mono text-[11px] text-emerald-300">
+                      <Scissors className="size-3" />
+                      {formatTimestamp(demoVideo.clipStartSec)}–{formatTimestamp(demoVideo.clipEndSec)}
                     </span>
                   )}
                   <Badge className="absolute top-2 left-2 bg-[#10B981] text-[11px] font-semibold text-zinc-950">

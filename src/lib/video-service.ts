@@ -1,11 +1,13 @@
 import "server-only";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { getDb, isDbConfigured } from "@/db";
 import { progress, settings, videos, type Video } from "@/db/schema";
+import { MAX_VIDEO_DURATION_SEC } from "./clip";
 import { DEFAULT_DEMO_VIDEO } from "./demo";
 import { fetchTranscript } from "./transcript";
 
 export const DEMO_SETTING_KEY = "demo_video_id";
+export const DEMO_CLIP_SETTING_KEY = "demo_video_clip";
 
 /**
  * Look up a cached video transcript in `english_videos`.
@@ -71,6 +73,29 @@ export interface DemoVideoInfo {
   title: string;
   channel: string | null;
   durationSec: number | null;
+  clipStartSec: number | null;
+  clipEndSec: number | null;
+}
+
+function parseDemoClip(raw: string | undefined): { startSec: number; endSec: number } | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { startSec?: unknown; endSec?: unknown };
+    const startSec = Number(parsed.startSec);
+    const endSec = Number(parsed.endSec);
+    if (
+      Number.isFinite(startSec) &&
+      Number.isFinite(endSec) &&
+      startSec >= 0 &&
+      endSec > startSec &&
+      endSec - startSec <= MAX_VIDEO_DURATION_SEC
+    ) {
+      return { startSec: Math.round(startSec), endSec: Math.round(endSec) };
+    }
+  } catch {
+    // ignore malformed setting
+  }
+  return null;
 }
 
 /**
@@ -79,15 +104,25 @@ export interface DemoVideoInfo {
  */
 export async function getActiveDemoVideo(): Promise<DemoVideoInfo> {
   let targetId = DEFAULT_DEMO_VIDEO.id;
+  let clipStartSec: number | null = null;
+  let clipEndSec: number | null = null;
 
   if (isDbConfigured()) {
     const db = getDb();
-    const [row] = await db
+    const settingRows = await db
       .select()
       .from(settings)
-      .where(eq(settings.key, DEMO_SETTING_KEY))
-      .limit(1);
-    if (row?.value) targetId = row.value;
+      .where(inArray(settings.key, [DEMO_SETTING_KEY, DEMO_CLIP_SETTING_KEY]));
+
+    const map = new Map(settingRows.map((r) => [r.key, r.value]));
+    const configuredId = map.get(DEMO_SETTING_KEY);
+    if (configuredId) targetId = configuredId;
+
+    const clip = parseDemoClip(map.get(DEMO_CLIP_SETTING_KEY));
+    if (clip) {
+      clipStartSec = clip.startSec;
+      clipEndSec = clip.endSec;
+    }
 
     const [vid] = await db
       .select({
@@ -100,7 +135,7 @@ export async function getActiveDemoVideo(): Promise<DemoVideoInfo> {
       .where(eq(videos.id, targetId))
       .limit(1);
 
-    if (vid) return vid;
+    if (vid) return { ...vid, clipStartSec, clipEndSec };
   }
 
   // If the default demo video hasn't been cached yet, fetch & cache it once so metadata is accurate.
@@ -111,6 +146,8 @@ export async function getActiveDemoVideo(): Promise<DemoVideoInfo> {
       title: fetched.title,
       channel: fetched.channel,
       durationSec: fetched.durationSec,
+      clipStartSec,
+      clipEndSec,
     };
   } catch {
     return {
@@ -118,6 +155,8 @@ export async function getActiveDemoVideo(): Promise<DemoVideoInfo> {
       title: DEFAULT_DEMO_VIDEO.title,
       channel: DEFAULT_DEMO_VIDEO.channel,
       durationSec: DEFAULT_DEMO_VIDEO.durationSec,
+      clipStartSec,
+      clipEndSec,
     };
   }
 }

@@ -57,10 +57,22 @@ async function PracticeContent({
   }
 
   const isDemo = !user;
+  let demoClip: { startSec: number; endSec: number } | null = null;
   if (isDemo) {
     const activeDemo = await getActiveDemoVideo();
     if (videoId !== activeDemo.id) {
       redirect(`/login?next=${encodeURIComponent(`/practice/${videoId}`)}`);
+    }
+    if (
+      activeDemo.clipStartSec !== null &&
+      activeDemo.clipEndSec !== null &&
+      activeDemo.clipEndSec > activeDemo.clipStartSec &&
+      activeDemo.clipEndSec - activeDemo.clipStartSec <= MAX_VIDEO_DURATION_SEC
+    ) {
+      demoClip = {
+        startSec: activeDemo.clipStartSec,
+        endSec: activeDemo.clipEndSec,
+      };
     }
   }
 
@@ -132,13 +144,19 @@ async function PracticeContent({
     }));
   }
 
-  const hasValidClip =
+  const hasValidUserClip =
     progRow?.clipStartSec != null &&
     progRow?.clipEndSec != null &&
     progRow.clipEndSec > progRow.clipStartSec &&
     progRow.clipEndSec - progRow.clipStartSec <= MAX_VIDEO_DURATION_SEC;
 
-  if (needsCrop(effectiveDuration) && !hasValidClip) {
+  const clipRange = isDemo
+    ? demoClip
+    : hasValidUserClip
+      ? { startSec: progRow!.clipStartSec!, endSec: progRow!.clipEndSec! }
+      : null;
+
+  if (needsCrop(effectiveDuration) && !clipRange) {
     if (user) {
       redirect(`/crop/${videoId}`);
     }
@@ -146,10 +164,6 @@ async function PracticeContent({
       <ErrorView message="This video is longer than 15 minutes and must be cropped before practicing." />
     );
   }
-
-  const clipRange = hasValidClip
-    ? { startSec: progRow!.clipStartSec!, endSec: progRow!.clipEndSec! }
-    : null;
 
   const effectiveSegments = clipRange
     ? sliceSegments(video.segments, clipRange.startSec, clipRange.endSec)

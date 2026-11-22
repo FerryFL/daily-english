@@ -1,4 +1,5 @@
 import "server-only";
+import { ProxyAgent, fetch as undiciFetch, type RequestInit as UndiciRequestInit } from "undici";
 import type { Segment } from "./chunker";
 
 export interface TranscriptResult {
@@ -39,6 +40,24 @@ interface PlayerResponse {
       captionTracks?: CaptionTrack[];
     };
   };
+}
+
+let cachedProxyUrl: string | undefined;
+let cachedAgent: ProxyAgent | undefined;
+let cachedApiKey: string | null = null;
+
+function getProxyAgent(): ProxyAgent | undefined {
+  const url = process.env.YOUTUBE_PROXY_URL?.trim();
+  if (!url) return undefined;
+  if (cachedAgent && cachedProxyUrl === url) return cachedAgent;
+  cachedProxyUrl = url;
+  cachedAgent = new ProxyAgent(url);
+  return cachedAgent;
+}
+
+function ytFetch(url: string, init: Omit<UndiciRequestInit, "dispatcher"> = {}, useProxy = true) {
+  const dispatcher = useProxy ? getProxyAgent() : undefined;
+  return undiciFetch(url, { ...init, dispatcher });
 }
 
 /** Parse YouTube timedtext XML (`<text start="..." dur="...">` or `<p t="..." d="...">`). */
@@ -86,39 +105,52 @@ const HEADERS = {
 };
 
 async function fetchInnertubeApiKey(videoId: string): Promise<string> {
-  const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
-    headers: HEADERS,
-    cache: "no-store",
-  });
-  if (!res.ok) {
-    throw new TranscriptError("Could not reach YouTube. Please try again.", 502);
+  if (cachedApiKey) return cachedApiKey;
+
+  const url = `https://www.youtube.com/watch?v=${videoId}`;
+
+  // Try direct first to save ~800KB of residential proxy bandwidth; fall back to proxy if needed.
+  const attempts = getProxyAgent() ? [false, true] : [false];
+  for (const useProxy of attempts) {
+    try {
+      const res = await ytFetch(url, { headers: HEADERS }, useProxy);
+      if (!res.ok) continue;
+      const html = await res.text();
+      const apiKey = html.match(/"INNERTUBE_API_KEY":"([^"]+)"/)?.[1];
+      if (apiKey) {
+        cachedApiKey = apiKey;
+        return apiKey;
+      }
+    } catch {
+      // try next strategy
+    }
   }
-  const html = await res.text();
-  const apiKey = html.match(/"INNERTUBE_API_KEY":"([^"]+)"/)?.[1];
-  if (!apiKey) {
-    throw new TranscriptError("Could not initialize YouTube client. Please try again.", 502);
-  }
-  return apiKey;
+
+  throw new TranscriptError("Could not initialize YouTube client. Please try again.", 502);
 }
 
 async function fetchAndroidPlayer(videoId: string, apiKey: string): Promise<PlayerResponse> {
-  const res = await fetch(`https://www.youtube.com/youtubei/v1/player?key=${apiKey}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Accept-Language": "en-US,en;q=0.9" },
-    body: JSON.stringify({
-      context: {
-        client: {
-          clientName: "ANDROID",
-          clientVersion: "20.10.38",
-          hl: "en",
-          gl: "US",
+  const res = await ytFetch(
+    `https://www.youtube.com/youtubei/v1/player?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept-Language": "en-US,en;q=0.9" },
+      body: JSON.stringify({
+        context: {
+          client: {
+            clientName: "ANDROID",
+            clientVersion: "20.10.38",
+            hl: "en",
+            gl: "US",
+          },
         },
-      },
-      videoId,
-    }),
-    cache: "no-store",
-  });
+        videoId,
+      }),
+    },
+    true,
+  );
   if (!res.ok) {
+    if (res.status === 400 || res.status === 403) cachedApiKey = null;
     throw new TranscriptError("Could not reach YouTube player API. Please try again.", 502);
   }
   return (await res.json()) as PlayerResponse;
@@ -128,10 +160,11 @@ async function fetchTrackXml(baseUrl: string): Promise<Segment[]> {
   // Strip `&fmt=srv3` so YouTube returns standard XML without PoToken blocking.
   const cleanUrl = baseUrl.replace(/&fmt=[^&]+/g, "");
   for (const url of [cleanUrl, baseUrl]) {
-    const res = await fetch(url, {
-      headers: { "Accept-Language": "en-US,en;q=0.9" },
-      cache: "no-store",
-    });
+    const res = await ytFetch(
+      url,
+      { headers: { "Accept-Language": "en-US,en;q=0.9" } },
+      true,
+    );
     if (!res.ok) continue;
     const xml = await res.text();
     if (!xml.trim()) continue;

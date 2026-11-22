@@ -3,6 +3,14 @@ import { parseVideoId } from "./youtube";
 import { buildChunks, cleanCaption, type Segment } from "./chunker";
 import { makeBlanks, type BlankToken } from "./blanker";
 import { check } from "./checker";
+import {
+  formatTimestamp,
+  MAX_VIDEO_DURATION_SEC,
+  needsCrop,
+  parseTimestamp,
+  sliceSegments,
+  validateClipRange,
+} from "./clip";
 import { STOPWORDS } from "./stopwords";
 
 describe("parseVideoId", () => {
@@ -116,5 +124,46 @@ describe("check", () => {
     expect(check("cat", "car")).toBe("wrong");
     expect(check("lisening", "listing")).toBe("wrong");
     expect(check("", "word")).toBe("wrong");
+  });
+});
+
+describe("clip helpers", () => {
+  it("detects videos longer than 15 minutes", () => {
+    expect(needsCrop(null)).toBe(false);
+    expect(needsCrop(900)).toBe(false);
+    expect(needsCrop(901)).toBe(true);
+  });
+
+  it("slices segments within [startSec, endSec) and clamps trailing duration", () => {
+    const segs: Segment[] = [
+      { start: 5, dur: 4, text: "before" },
+      { start: 10, dur: 4, text: "first" },
+      { start: 18, dur: 5, text: "last" },
+      { start: 20, dur: 3, text: "after" },
+    ];
+    const sliced = sliceSegments(segs, 10, 20);
+    expect(sliced).toEqual([
+      { start: 10, dur: 4, text: "first" },
+      { start: 18, dur: 2, text: "last" },
+    ]);
+  });
+
+  it("validates clip range against min/max/video duration", () => {
+    expect(validateClipRange(0, 600, 1800).valid).toBe(true);
+    expect(validateClipRange(0, MAX_VIDEO_DURATION_SEC, 1800).valid).toBe(true);
+    expect(validateClipRange(0, MAX_VIDEO_DURATION_SEC + 1, 1800).valid).toBe(false);
+    expect(validateClipRange(100, 105, 1800).valid).toBe(false);
+    expect(validateClipRange(100, 2000, 1800).valid).toBe(false);
+    expect(validateClipRange(-5, 100, 1800).valid).toBe(false);
+  });
+
+  it("formats and parses timestamps", () => {
+    expect(formatTimestamp(65)).toBe("01:05");
+    expect(formatTimestamp(3665)).toBe("1:01:05");
+    expect(parseTimestamp("05:30")).toBe(330);
+    expect(parseTimestamp("1:02:03")).toBe(3723);
+    expect(parseTimestamp("90")).toBe(90);
+    expect(parseTimestamp("05:75")).toBeNull();
+    expect(parseTimestamp("abc")).toBeNull();
   });
 });

@@ -6,6 +6,7 @@ import { AlertCircle, ArrowLeft } from "lucide-react";
 import { getDb, isDbConfigured } from "@/db";
 import { chunkAttempts, progress } from "@/db/schema";
 import { buildChunks } from "@/lib/chunker";
+import { MAX_VIDEO_DURATION_SEC, needsCrop, sliceSegments } from "@/lib/clip";
 import { getOptionalUser } from "@/lib/supabase/server";
 import { TranscriptError } from "@/lib/transcript";
 import {
@@ -74,10 +75,11 @@ async function PracticeContent({
     return <ErrorView message={msg} />;
   }
 
-  const chunks = buildChunks(video.segments);
-  if (chunks.length === 0) {
-    return <ErrorView message="No usable English speech was found in this video's captions." />;
-  }
+  const effectiveDuration =
+    video.durationSec ??
+    (video.segments.length > 0
+      ? Math.ceil(Math.max(...video.segments.map((s) => s.start + s.dur)))
+      : null);
 
   let initialChunkIndex = 0;
   let initialCompleted = false;
@@ -88,12 +90,23 @@ async function PracticeContent({
     revealedCount: number;
     missedWords: string[];
   }[] = [];
+  let progRow: {
+    currentChunk: number;
+    completed: boolean;
+    clipStartSec: number | null;
+    clipEndSec: number | null;
+  } | null = null;
 
   if (user && isDbConfigured()) {
     const db = getDb();
     const [[prog], attemptRows] = await Promise.all([
       db
-        .select()
+        .select({
+          currentChunk: progress.currentChunk,
+          completed: progress.completed,
+          clipStartSec: progress.clipStartSec,
+          clipEndSec: progress.clipEndSec,
+        })
         .from(progress)
         .where(and(eq(progress.userId, user.id), eq(progress.videoId, videoId)))
         .limit(1),
@@ -105,10 +118,9 @@ async function PracticeContent({
     ]);
 
     if (prog) {
+      progRow = prog;
       initialChunkIndex = prog.currentChunk;
       initialCompleted = prog.completed;
-    } else {
-      await ensureInitialProgress(user.id, videoId, chunks.length);
     }
 
     initialRecords = attemptRows.map((a) => ({
@@ -118,6 +130,38 @@ async function PracticeContent({
       revealedCount: a.revealedCount,
       missedWords: a.missedWords,
     }));
+  }
+
+  const hasValidClip =
+    progRow?.clipStartSec != null &&
+    progRow?.clipEndSec != null &&
+    progRow.clipEndSec > progRow.clipStartSec &&
+    progRow.clipEndSec - progRow.clipStartSec <= MAX_VIDEO_DURATION_SEC;
+
+  if (needsCrop(effectiveDuration) && !hasValidClip) {
+    if (user) {
+      redirect(`/crop/${videoId}`);
+    }
+    return (
+      <ErrorView message="This video is longer than 15 minutes and must be cropped before practicing." />
+    );
+  }
+
+  const clipRange = hasValidClip
+    ? { startSec: progRow!.clipStartSec!, endSec: progRow!.clipEndSec! }
+    : null;
+
+  const effectiveSegments = clipRange
+    ? sliceSegments(video.segments, clipRange.startSec, clipRange.endSec)
+    : video.segments;
+
+  const chunks = buildChunks(effectiveSegments);
+  if (chunks.length === 0) {
+    return <ErrorView message="No usable English speech was found in this video's captions." />;
+  }
+
+  if (user && isDbConfigured() && !progRow) {
+    await ensureInitialProgress(user.id, videoId, chunks.length);
   }
 
   return (
@@ -130,6 +174,7 @@ async function PracticeContent({
       initialCompleted={initialCompleted}
       initialRecords={initialRecords}
       isDemo={isDemo}
+      clipRange={clipRange}
     />
   );
 }

@@ -38,15 +38,18 @@ export function VideoUrlForm({ isAuthenticated = true }: { isAuthenticated?: boo
     setLoading(true);
     try {
       const res = await fetch(`/api/transcript?v=${encodeURIComponent(videoId)}`);
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        needsCrop?: boolean;
+      };
       if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
         setError(data.error ?? "Could not load captions for this video.");
         setLoading(false);
         return;
       }
       setUrl("");
       setLoading(false);
-      router.push(`/practice/${videoId}`);
+      router.push(data.needsCrop ? `/crop/${videoId}` : `/practice/${videoId}`);
     } catch {
       setError("Network error while checking captions. Please try again.");
       setLoading(false);

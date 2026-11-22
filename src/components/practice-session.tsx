@@ -3,12 +3,13 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Lock } from "lucide-react";
+import { ArrowLeft, Lock, Scissors } from "lucide-react";
 import { toast } from "sonner";
 import { resetVideoProgress, saveChunkResult } from "@/app/practice/actions";
 import { makeBlanks, type BlankToken } from "@/lib/blanker";
 import { check, isPassing } from "@/lib/checker";
 import type { Chunk } from "@/lib/chunker";
+import { formatTimestamp } from "@/lib/clip";
 import { cn } from "@/lib/utils";
 import { useShortcuts } from "@/hooks/use-shortcuts";
 import { ChunkCard, type BlankStatus } from "@/components/chunk-card";
@@ -28,6 +29,7 @@ interface PracticeSessionProps {
   initialCompleted: boolean;
   initialRecords: CompletedChunkRecord[];
   isDemo?: boolean;
+  clipRange?: { startSec: number; endSec: number } | null;
 }
 
 export function PracticeSession({
@@ -39,6 +41,7 @@ export function PracticeSession({
   initialCompleted,
   initialRecords,
   isDemo = false,
+  clipRange = null,
 }: PracticeSessionProps) {
   const router = useRouter();
   const playerRef = useRef<YouTubePlayerHandle | null>(null);
@@ -324,6 +327,18 @@ export function PracticeSession({
                 <Badge variant="secondary" className="shrink-0 text-[11px]">
                   Auto captions
                 </Badge>
+              )}
+              {clipRange && !isDemo && (
+                <Link href={`/crop/${videoId}`} className="shrink-0">
+                  <Badge
+                    variant="outline"
+                    className="gap-1 font-mono text-[11px] hover:border-[#10B981] hover:text-[#10B981]"
+                    title="Change cropped range"
+                  >
+                    <Scissors className="size-3" />
+                    {formatTimestamp(clipRange.startSec)}–{formatTimestamp(clipRange.endSec)}
+                  </Badge>
+                </Link>
               )}
             </div>
             <span className="shrink-0 font-mono text-xs text-[#10B981] dark:text-[#34D399]">

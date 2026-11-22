@@ -48,6 +48,8 @@ export const progress = pgTable(
       .references(() => videos.id, { onDelete: "cascade" }),
     currentChunk: integer("current_chunk").notNull().default(0),
     totalChunks: integer("total_chunks").notNull(),
+    clipStartSec: integer("clip_start_sec"),
+    clipEndSec: integer("clip_end_sec"),
     completed: boolean("completed").notNull().default(false),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

@@ -46,9 +46,30 @@ let cachedProxyUrl: string | undefined;
 let cachedAgent: ProxyAgent | undefined;
 let cachedApiKey: string | null = null;
 
+/**
+ * Normalize common proxy string formats into a valid HTTP(S) proxy URL:
+ * - `http://user:pass@host:port` (pass through)
+ * - `user:pass@host:port` -> `http://user:pass@host:port`
+ * - `host:port:user:pass` (IPRoyal default copy format) -> `http://user:pass@host:port`
+ */
+export function normalizeProxyUrl(raw: string): string {
+  const cleaned = raw.trim().replace(/^["']|["']$/g, "");
+  if (/^https?:\/\//i.test(cleaned)) return cleaned;
+
+  // Format: host:port:user:pass (password may itself contain colons)
+  const iproyalMatch = cleaned.match(/^([^:@/]+):(\d+):([^:@]+):(.+)$/);
+  if (iproyalMatch) {
+    const [, host, port, user, pass] = iproyalMatch;
+    return `http://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}`;
+  }
+
+  return `http://${cleaned}`;
+}
+
 function getProxyAgent(): ProxyAgent | undefined {
-  const url = process.env.YOUTUBE_PROXY_URL?.trim();
-  if (!url) return undefined;
+  const raw = process.env.YOUTUBE_PROXY_URL?.trim();
+  if (!raw) return undefined;
+  const url = normalizeProxyUrl(raw);
   if (cachedAgent && cachedProxyUrl === url) return cachedAgent;
   cachedProxyUrl = url;
   cachedAgent = new ProxyAgent(url);
@@ -181,7 +202,8 @@ export async function fetchTranscript(videoId: string): Promise<TranscriptResult
     data = await fetchAndroidPlayer(videoId, apiKey);
   } catch (e) {
     if (e instanceof TranscriptError) throw e;
-    console.error("[transcript] player fetch failed", e);
+    const err = e as Error & { cause?: { code?: string; message?: string } };
+    console.error("[transcript] player fetch failed:", err.message, err.cause?.code, err.cause?.message);
     throw new TranscriptError("Could not reach YouTube. Please try again.", 502);
   }
 
